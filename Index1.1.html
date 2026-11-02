@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#6c5ce7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Клас: розклад і домашка</title>
+<style>
+  :root{--bg:#f4f3fb;--card:#fff;--text:#1d1b2e;--muted:#7a7790;--accent:#6c5ce7;--accent2:#a29bfe;--ok:#00b894;--bad:#e17055;--line:#e6e4f2}
+  @media (prefers-color-scheme:dark){:root{--bg:#14131f;--card:#1e1c2e;--text:#eeedf7;--muted:#9a97b3;--line:#2e2b45}}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px}
+  header{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:20px 16px 16px;padding-top:max(20px,env(safe-area-inset-top))}
+  header h1{margin:0;font-size:22px}
+  header p{margin:4px 0 0;opacity:.9;font-size:14px}
+  #status{font-size:12px;opacity:.9;margin-top:6px}
+  main{max-width:640px;margin:0 auto;padding:12px 16px}
+  .tabs{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:5}
+  .tabs button{flex:1;padding:14px 4px;border:0;background:none;color:var(--muted);font-size:15px;font-weight:600}
+  .tabs button.on{color:var(--accent)}
+  .days{display:flex;gap:6px;overflow-x:auto;padding:4px 0 12px}
+  .days button{flex:1;min-width:52px;padding:10px 0;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font-weight:600;font-size:14px}
+  .days button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .days button.today:not(.on){border-color:var(--accent);color:var(--accent)}
+  .card{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;border:1px solid var(--line)}
+  .lesson{display:flex;align-items:center;gap:12px}
+  .num{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:none}
+  .lesson input{flex:1;border:0;background:none;color:var(--text);font-size:16px;padding:6px 0;outline:none;min-width:0}
+  .lesson input::placeholder{color:var(--muted)}
+  .hint{color:var(--muted);font-size:13px;margin:4px 2px 12px}
+  .btn{border:0;background:var(--accent);color:#fff;border-radius:12px;padding:12px 16px;font-size:16px;font-weight:600;width:100%}
+  .btn:disabled{opacity:.6}
+  .btn.ghost{background:none;color:var(--accent);border:1px dashed var(--accent);margin-top:4px}
+  #hwForm{display:grid;gap:8px}
+  .err::placeholder{color:var(--bad)}
+  select,input[type=text],input[type=date],textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font-size:16px;font-family:inherit}
+  textarea{resize:vertical;min-height:64px}
+  .hw{display:flex;gap:12px;align-items:flex-start}
+  .hw input[type=checkbox]{width:22px;height:22px;margin-top:2px;accent-color:var(--ok);flex:none}
+  .hw .body{flex:1;min-width:0}
+  .hw .subj{font-weight:700}
+  .hw .task{margin:2px 0;word-wrap:break-word;white-space:pre-wrap}
+  .hw .due{font-size:13px;color:var(--muted)}
+  .hw .due.late{color:var(--bad);font-weight:600}
+  .hw.done .task,.hw.done .subj{text-decoration:line-through;opacity:.5}
+  .del{border:0;background:none;color:var(--muted);font-size:20px;padding:0 4px}
+  h2{font-size:15px;color:var(--muted);margin:16px 2px 8px;text-transform:uppercase;letter-spacing:.04em}
+  .empty{text-align:center;color:var(--muted);padding:28px 0}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 Наш клас</h1>
+  <p id="today"></p>
+  <div id="status"></div>
+</header>
+
+<main>
+  <!-- РОЗКЛАД -->
+  <section id="tab-schedule">
+    <div class="days" id="days"></div>
+    <div id="lessons"></div>
+    <button class="btn ghost" id="addLesson">+ Додати урок</button>
+    <p class="hint">Натисни на назву уроку, щоб змінити. Розклад спільний для всіх.</p>
+  </section>
+
+  <!-- ДОМАШКА -->
+  <section id="tab-homework" hidden>
+    <div class="card" id="hwForm">
+      <select id="hwSubject"></select>
+      <textarea id="hwTask" placeholder="Що задали?"></textarea>
+      <input type="date" id="hwDue">
+      <button class="btn" type="button" id="hwAdd">Додати домашку</button>
+    </div>
+    <p class="hint">Домашку бачать усі. Галочка «зроблено» — тільки у тебе.</p>
+    <div id="hwList"></div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button id="b-schedule" class="on">📅 Розклад</button>
+  <button id="b-homework">📝 Домашка</button>
+</nav>
+
+<script>
+/* =====================================================
+   НАЛАШТУВАННЯ: встав сюди адресу Firebase Realtime Database
+   (приклад: https://nash-klas-default-rtdb.europe-west1.firebasedatabase.app)
+   Без кінцевого слеша. Якщо залишити порожнім — усе зберігається
+   тільки на цьому телефоні.
+   ===================================================== */
+const DB_URL = '';
+/* ===================================================== */
+
+const SHARED = !!DB_URL;
+const DAYS = ['Пн','Вт','Ср','Чт','Пт'];
+
+// Початковий розклад — приклад, змінюється прямо в додатку
+const DEFAULT_SCHEDULE = [
+  ['Математика','Українська мова','Історія','Фізкультура','Англійська'],
+  ['Фізика','Хімія','Математика','Українська література','Інформатика'],
+  ['Біологія','Географія','Англійська','Математика','Фізкультура'],
+  ['Українська мова','Фізика','Історія','Англійська','Хімія'],
+  ['Математика','Інформатика','Українська література','Біологія','Класна година']
+];
+
+function load(key, fallback){
+  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch(e){ return fallback; }
+}
+function save(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
+}
+
+/* ---------- робота з базою (Firebase REST) ---------- */
+async function db(method, path, data){
+  const opt = {method};
+  if(data !== undefined){ opt.body = JSON.stringify(data); opt.headers = {'Content-Type':'application/json'}; }
+  const r = await fetch(DB_URL + path + '.json', opt);
+  if(!r.ok) throw new Error('db ' + r.status);
+  return r.json();
+}
+function normSchedule(d){
+  const out = [];
+  for(let i = 0; i < 5; i++){
+    let day = d && d[i];
+    if(!day) day = [];
+    else if(!Array.isArray(day)) day = Object.values(day);
+    out.push(day.map(s => s || ''));
+  }
+  return out;
+}
+
+function setStatus(kind){
+  const el = $('status');
+  if(!SHARED) el.textContent = '💾 Зберігається тільки на цьому телефоні';
+  else if(kind === 'err') el.textContent = '🔴 Немає зв’язку — спробую ще раз';
+  else el.textContent = '🟢 Спільна домашка, оновлюється сама';
+}
+
+/* ---------- стан ---------- */
+let schedule = SHARED ? DEFAULT_SCHEDULE.map(d => d.slice()) : load('schedule', DEFAULT_SCHEDULE);
+let homework = SHARED ? [] : load('homework', []);
+let doneSet = new Set(load('done', []));
+let scheduleTimer = null;
+
+const jsDay = new Date().getDay();
+let currentDay = (jsDay >= 1 && jsDay <= 5) ? jsDay - 1 : 0;
+const todayIdx = (jsDay >= 1 && jsDay <= 5) ? jsDay - 1 : -1;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toISO(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+$('today').textContent = new Date().toLocaleDateString('uk-UA', {weekday:'long', day:'numeric', month:'long'});
+
+/* ---------- Розклад ---------- */
+function saveSchedule(){
+  if(!SHARED){ save('schedule', schedule); return; }
+  clearTimeout(scheduleTimer);
+  scheduleTimer = setTimeout(async () => {
+    try{ await db('PUT', '/schedule', schedule); setStatus('ok'); }
+    catch(e){ setStatus('err'); }
+    scheduleTimer = null;
+  }, 600);
+}
+function renderDays(){
+  $('days').innerHTML = DAYS.map((d,i) =>
+    `<button data-i="${i}" class="${i===currentDay?'on':''} ${i===todayIdx?'today':''}">${d}</button>`).join('');
+  $('days').querySelectorAll('button').forEach(b => b.onclick = () => { currentDay = +b.dataset.i; renderDays(); renderLessons(); });
+}
+function renderLessons(){
+  const list = schedule[currentDay];
+  $('lessons').innerHTML = list.map((name,i) =>
+    `<div class="card lesson"><span class="num">${i+1}</span>
+      <input value="${esc(name)}" data-i="${i}" placeholder="Назва уроку">
+      <button class="del" data-del="${i}" aria-label="Видалити">×</button></div>`).join('')
+    || '<div class="empty">Уроків немає 🎉</div>';
+  $('lessons').querySelectorAll('input').forEach(inp => inp.oninput = () => {
+    schedule[currentDay][+inp.dataset.i] = inp.value; saveSchedule(); fillSubjects();
+  });
+  $('lessons').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    schedule[currentDay].splice(+b.dataset.del, 1); saveSchedule(); renderLessons(); fillSubjects();
+  });
+}
+$('addLesson').onclick = () => { schedule[currentDay].push(''); saveSchedule(); renderLessons(); };
+
+/* ---------- Домашка ---------- */
+function allSubjects(){
+  return [...new Set(schedule.flat().map(s => s.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,'uk'));
+}
+function fillSubjects(){
+  const prev = $('hwSubject').value;
+  $('hwSubject').innerHTML = allSubjects().map(s => `<option>${esc(s)}</option>`).join('');
+  if(prev) $('hwSubject').value = prev;
+}
+function nextLessonDate(subject){
+  for(let add = 1; add <= 14; add++){
+    const d = new Date(); d.setDate(d.getDate() + add);
+    const w = d.getDay();
+    if(w >= 1 && w <= 5 && schedule[w-1].some(s => s.trim() === subject)) return d;
+  }
+  const d = new Date(); d.setDate(d.getDate()+1); return d;
+}
+$('hwSubject').onchange = () => { $('hwDue').value = toISO(nextLessonDate($('hwSubject').value)); };
+$('hwTask').oninput = () => $('hwTask').classList.remove('err');
+
+$('hwAdd').onclick = async () => {
+  const task = $('hwTask').value.trim();
+  if(!task){
+    $('hwTask').classList.add('err');
+    $('hwTask').placeholder = 'Напиши, що задали!';
+    $('hwTask').focus();
+    return;
+  }
+  const item = {
+    subject: $('hwSubject').value || 'Інше',
+    task,
+    due: $('hwDue').value || toISO(new Date(Date.now() + 86400000))
+  };
+  $('hwAdd').disabled = true;
+  try{
+    if(SHARED){
+      const r = await db('POST', '/homework', item);
+      item.id = r.name;
+      setStatus('ok');
+    } else {
+      item.id = String(Date.now());
+    }
+    homework.push(item);
+    if(!SHARED) save('homework', homework);
+    $('hwTask').value = '';
+    $('hwTask').placeholder = 'Що задали?';
+    renderHomework();
+  }catch(e){
+    setStatus('err');
+    $('hwTask').placeholder = 'Не вийшло зберегти, спробуй ще раз';
+  }
+  $('hwAdd').disabled = false;
+};
+
+function renderHomework(){
+  const todayISO = toISO(new Date());
+  const isDone = h => doneSet.has(h.id);
+  const active = homework.filter(h => !isDone(h)).sort((a,b) => a.due.localeCompare(b.due));
+  const finished = homework.filter(isDone);
+  const item = h => {
+    const d = isDone(h);
+    const late = !d && h.due < todayISO;
+    const dateTxt = new Date(h.due + 'T00:00').toLocaleDateString('uk-UA', {weekday:'short', day:'numeric', month:'short'});
+    return `<div class="card hw ${d?'done':''}">
+      <input type="checkbox" data-id="${esc(h.id)}" ${d?'checked':''}>
+      <div class="body"><div class="subj">${esc(h.subject)}</div>
+      <div class="task">${esc(h.task)}</div>
+      <div class="due ${late?'late':''}">${late?'⚠️ прострочено · ':'до '}${dateTxt}</div></div>
+      <button class="del" data-del="${esc(h.id)}" aria-label="Видалити">×</button></div>`;
+  };
+  $('hwList').innerHTML =
+    (active.length ? '<h2>Треба зробити</h2>' + active.map(item).join('') : '<div class="empty">Домашки немає 🎉</div>') +
+    (finished.length ? '<h2>Зроблено</h2>' + finished.map(item).join('') : '');
+
+  $('hwList').querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = () => {
+    if(c.checked) doneSet.add(c.dataset.id); else doneSet.delete(c.dataset.id);
+    save('done', [...doneSet]);
+    renderHomework();
+  });
+  $('hwList').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    if(b.dataset.sure){
+      const id = b.dataset.del;
+      try{
+        if(SHARED) await db('DELETE', '/homework/' + id);
+        homework = homework.filter(x => x.id !== id);
+        if(!SHARED) save('homework', homework);
+        renderHomework();
+      }catch(e){ setStatus('err'); }
+      return;
+    }
+    b.dataset.sure = '1';
+    b.textContent = 'Точно?';
+    b.style.color = 'var(--bad)';
+    b.style.fontSize = '14px';
+    b.style.fontWeight = '700';
+    setTimeout(() => {
+      if(b.isConnected){ delete b.dataset.sure; b.textContent = '×'; b.style.cssText = ''; }
+    }, 3000);
+  });
+}
+
+/* ---------- Синхронізація ---------- */
+async function sync(){
+  if(!SHARED) return;
+  try{
+    const hw = await db('GET', '/homework');
+    homework = Object.entries(hw || {}).map(([id, v]) => ({id, subject: v.subject || '', task: v.task || '', due: v.due || toISO(new Date()), }));
+    // не перебиваємо розклад, поки людина його редагує
+    const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#lessons');
+    if(!editing && !scheduleTimer){
+      const sc = await db('GET', '/schedule');
+      if(sc){ schedule = normSchedule(sc); }
+      else { await db('PUT', '/schedule', schedule); }  // перший запуск: записуємо стандартний розклад
+      renderLessons(); fillSubjects();
+    }
+    renderHomework();
+    setStatus('ok');
+  }catch(e){ setStatus('err'); }
+}
+
+/* ---------- Вкладки ---------- */
+function show(tab){
+  $('tab-schedule').hidden = tab !== 'schedule';
+  $('tab-homework').hidden = tab !== 'homework';
+  $('b-schedule').classList.toggle('on', tab === 'schedule');
+  $('b-homework').classList.toggle('on', tab === 'homework');
+  window.scrollTo(0,0);
+}
+$('b-schedule').onclick = () => show('schedule');
+$('b-homework').onclick = () => show('homework');
+
+/* ---------- Старт ---------- */
+setStatus('ok');
+renderDays(); renderLessons(); fillSubjects();
+$('hwDue').value = toISO(nextLessonDate($('hwSubject').value));
+renderHomework();
+if(SHARED){
+  sync();
+  setInterval(sync, 15000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) sync(); });
+}
+</script>
+</body>
+</html>
